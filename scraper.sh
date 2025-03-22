@@ -4,7 +4,7 @@
 URL="https://www.boursorama.com/bourse/indices/cours/1cVIX/"
 
 # Fichier CSV où les données seront enregistrées
-OUTPUT="vix_data.csv"
+OUTPUT="/home/cmlnrnt/scrap_vix/vix_data.csv"
 
 # Récupération de la page HTML
 PAGE_CONTENT=$(curl -s "$URL")
