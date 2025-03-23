@@ -46,8 +46,8 @@ if [ "$HOUR" -eq 20 ]; then
 
     # Écriture du rapport
     echo "Date: $(date '+%Y-%m-%d')" > "$REPORT_FILE"
-    echo "Prix d'ouverture: $OPEN" >> "$REPORT_FILE"
-    echo "Prix de clôture: $CLOSE" >> "$REPORT_FILE"
-    echo "Évolution: $EVOLUTION%" >> "$REPORT_FILE"
-    echo "Volatilité: $VOLATILITY" >> "$REPORT_FILE"
+    echo "Open Price: $OPEN" >> "$REPORT_FILE"
+    echo "Close Price: $CLOSE" >> "$REPORT_FILE"
+    echo "Change: $EVOLUTION%" >> "$REPORT_FILE"
+    echo "Volatility: $VOLATILITY" >> "$REPORT_FILE"
 fi
