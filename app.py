@@ -7,7 +7,7 @@ import plotly.express as px
 # Function to load VIX data from CSV
 def load_data():
     try:
-        df = pd.read_csv("vix_data.csv", names=["Date", "VIX"], parse_dates=["Date"])
+        df = pd.read_csv("vix_data.csv", names=["Date", "VIX"], header=None, parse_dates=["Date"])
         df = df.sort_values("Date")
         return df
     except Exception as e:
