@@ -3,6 +3,7 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 import pandas as pd
 import plotly.express as px
+from dash.dependencies import Input, Output
 
 # Function to load VIX data from CSV
 def load_data():
@@ -22,19 +23,33 @@ def load_report():
     except FileNotFoundError:
         return "Daily report is not available yet."
 
+def get_vix_alert(vix_value):
+    if vix_value < 20:
+        return dbc.Badge("Faible volatilité", color="success")
+    elif vix_value < 30:
+        return dbc.Badge("Volatilité modérée", color="warning")
+    else:
+        return dbc.Badge("Tension élevée sur les marchés", color="danger")
+
 # Initialize the Dash app with a dark theme
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
 
 app.layout = dbc.Container([
     html.H1("Volatility Index - The Fear Gauge", style={'textAlign': 'center', 'color': 'white'}),
 
-    dcc.Graph(id="graph-vix"),
+    html.Div(id="vix-alert", style={'textAlign': 'center', 'marginBottom': '10px'}),
 
-    dcc.Interval(
-        id="interval-update",
-        interval=5*60*1000,  # Update every 5 minutes
-        n_intervals=0
+    dcc.DatePickerRange(
+        id='date-range',
+        display_format='YYYY-MM-DD',
+        start_date_placeholder_text='Start',
+        end_date_placeholder_text='End'
     ),
+
+    dcc.Graph(id="graph-vix"),
+    dcc.Graph(id="graph-variation"),
+
+    dcc.Interval(id="interval-update", interval=5*60*1000, n_intervals=0),
 
     html.Hr(),
 
@@ -49,57 +64,77 @@ app.layout = dbc.Container([
         'fontSize': '16px'
     }),
 
-    dcc.Interval(
-        id="interval-report",
-        interval=60*60*1000,  # Update every hour
-        n_intervals=0
-    )
+    html.Hr(),
+    html.Div(id="stats-summary", style={'color': 'white'}),
+
+    html.A("Télécharger les données CSV", href="/vix_data.csv", target="_blank",
+           style={'color': 'lightblue', 'display': 'block', 'marginTop': '20px'}),
+
+    dcc.Interval(id="interval-report", interval=60*60*1000, n_intervals=0)
 
 ], fluid=True, style={'backgroundColor': '#121212', 'padding': '20px'})
 
-# Callback to update the VIX graph with moving averages
 @app.callback(
-    dash.Output("graph-vix", "figure"),
-    [dash.Input("interval-update", "n_intervals")]
+    Output("vix-alert", "children"),
+    Input("interval-update", "n_intervals")
 )
-def update_graph(n_intervals):
+def update_alert(n):
     df = load_data()
     if df.empty:
-        return px.line(title="No data available")
+        return ""
+    latest_vix = df.iloc[-1]["VIX"]
+    return get_vix_alert(latest_vix)
 
-    # Calculate 5-day and 10-day moving averages
+@app.callback(
+    Output("graph-vix", "figure"),
+    Output("graph-variation", "figure"),
+    Output("stats-summary", "children"),
+    [Input("interval-update", "n_intervals"),
+     Input("date-range", "start_date"),
+     Input("date-range", "end_date")]
+)
+def update_graphs(n, start_date, end_date):
+    df = load_data()
+    if df.empty:
+        return px.line(title="No data available"), px.bar(title="No variation"), ""
+
+    if start_date and end_date:
+        df = df[(df["Date"] >= start_date) & (df["Date"] <= end_date)]
+
     df["SMA_5"] = df["VIX"].rolling(window=5).mean()
     df["SMA_10"] = df["VIX"].rolling(window=10).mean()
+    df["Variation (%)"] = df["VIX"].pct_change() * 100
 
-    # Create the figure with VIX and moving averages
-    fig = px.line(df, x="Date", y="VIX", title="VIX Evolution",
-                  labels={"Date": "Date", "VIX": "Points"},
-                  markers=True, line_shape="linear")
+    fig_vix = px.line(df, x="Date", y="VIX", title="VIX Evolution",
+                      labels={"Date": "Date", "VIX": "Points"},
+                      markers=True, line_shape="linear")
 
-    # Add moving average lines
-    fig.add_scatter(x=df["Date"], y=df["SMA_5"], mode="lines", name="SMA 5 days", line=dict(color="blue"))
-    fig.add_scatter(x=df["Date"], y=df["SMA_10"], mode="lines", name="SMA 10 days", line=dict(color="green"))
+    fig_vix.add_scatter(x=df["Date"], y=df["SMA_5"], mode="lines", name="SMA 5 days", line=dict(color="blue"))
+    fig_vix.add_scatter(x=df["Date"], y=df["SMA_10"], mode="lines", name="SMA 10 days", line=dict(color="green"))
+    fig_vix.update_traces(line=dict(color="red", width=2), selector=dict(name="VIX"))
+    fig_vix.update_layout(template="plotly_dark", plot_bgcolor="#121212", paper_bgcolor="#121212",
+                          font=dict(color="white"))
 
-    # Ensure VIX remains red
-    fig.update_traces(line=dict(color="red", width=2), selector=dict(name="VIX"))
-    fig.update_layout(
-        template="plotly_dark",
-        plot_bgcolor="#121212",
-        paper_bgcolor="#121212",
-        font=dict(color="white")
-    )
+    fig_var = px.bar(df, x="Date", y="Variation (%)", title="Variations du VIX",
+                     labels={"Date": "Date", "Variation (%)": "%"})
+    fig_var.update_layout(template="plotly_dark", plot_bgcolor="#121212", paper_bgcolor="#121212",
+                          font=dict(color="white"))
 
-    return fig
+    summary = html.Div([
+        html.P(f"VIX actuel : {df.iloc[-1]['VIX']:.2f}"),
+        html.P(f"Max 24h : {df['VIX'].tail(288).max():.2f}"),
+        html.P(f"Min 24h : {df['VIX'].tail(288).min():.2f}"),
+        html.P(f"Moyenne 24h : {df['VIX'].tail(288).mean():.2f}")
+    ])
 
-# Callback to update the daily report
+    return fig_vix, fig_var, summary
+
 @app.callback(
-    dash.Output("daily-report", "children"),
-    [dash.Input("interval-report", "n_intervals")]
+    Output("daily-report", "children"),
+    Input("interval-report", "n_intervals")
 )
 def update_report(n_intervals):
     return load_report()
 
-# Run the Dash app
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0', port=8050)
-
